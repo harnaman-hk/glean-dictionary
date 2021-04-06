@@ -9,7 +9,7 @@ import requests
 import stringcase
 
 OUTPUT_DIRECTORY = os.path.join("public", "data")
-ANNOTATIONS_URL = "https://mozilla.github.io/glean-annotations/api.json"
+ANNOTATIONS_URL = "https://deploy-preview-12--glean-annotations.netlify.app/api.json"
 
 
 def _serialize_sets(obj):
@@ -133,26 +133,29 @@ for (app_name, app_group) in app_groups.items():
             if metric.identifier not in metric_identifiers_seen:
                 metric_identifiers_seen.add(metric.identifier)
 
+                # read the annotation, if any
+                annotation = (
+                    annotations_index.get(app_name, {}).get("metrics", {}).get(metric.identifier)
+                )
+
+                base_definition = {
+                    "name": metric.identifier,
+                    "description": metric.description,
+                    "type": metric.definition["type"],
+                    "expires": metric.definition["expires"],
+                }
+                if annotation and annotation.get("features"):
+                    base_definition.update({"features": annotation["features"]})
+
                 # metrics with associated pings
                 metric_pings["data"].append(
-                    {
-                        "name": metric.identifier,
-                        "description": metric.description,
-                        "pings": metric.definition["send_in_pings"],
-                        "type": metric.definition["type"],
-                        "expires": metric.definition["expires"],
-                    }
+                    dict(base_definition, pings=metric.definition["send_in_pings"])
                 )
 
-                app_data["metrics"].append(
-                    {
-                        "name": metric.identifier,
-                        "description": metric.description,
-                        "type": metric.definition["type"],
-                        "expires": metric.definition["expires"],
-                    }
-                )
+                # the summary of metrics
+                app_data["metrics"].append(base_definition)
 
+                # the full definition
                 app_metrics[metric.identifier] = dict(
                     metric.definition,
                     name=metric.identifier,

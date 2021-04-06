@@ -6,6 +6,7 @@
   import NotFound from "../components/NotFound.svelte";
   import HelpHoverable from "../components/HelpHoverable.svelte";
   import PageTitle from "../components/PageTitle.svelte";
+  import Pill from "../components/Pill.svelte";
   import MetadataTable from "../components/MetadataTable.svelte";
   import {
     METRIC_DEFINITION_SCHEMA,
@@ -97,6 +98,12 @@
   {/if}
 
   <PageTitle text={metric.name} />
+
+  {#if metric.annotation && metric.annotation.features}
+    {#each metric.annotation.features as feature}
+      <Pill message={feature} bgColor="#4a5568" />
+    {/each}
+  {/if}
 
   <Markdown text={metric.description} inline={false} />
 

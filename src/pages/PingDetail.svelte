@@ -1,7 +1,4 @@
 <script>
-  import { setContext } from "svelte";
-  import { writable } from "svelte/store";
-
   import { getPingData } from "../state/api";
   import { pageState, pageTitle } from "../state/stores";
   import { getBigQueryURL, getLookerURL } from "../state/urls";
@@ -26,13 +23,11 @@
     }
   );
 
-  const searchText = writable($pageState.search || "");
-  setContext("searchText", searchText);
-  const showExpired = writable($pageState.showExpired || false);
-  setContext("showExpired", showExpired);
-  $: {
-    pageState.set({ search: $searchText, showExpired: $showExpired });
-  }
+  pageState.set({
+    search: "",
+    showExpired: false,
+    ...$pageState,
+  });
 
   pageTitle.set(`${params.ping} | ${params.app}`);
 </script>

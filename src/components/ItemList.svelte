@@ -1,7 +1,7 @@
 <script>
-  import { getContext, setContext } from "svelte";
+  import { setContext } from "svelte";
   import { writable } from "svelte/store";
-  import { chunk } from "lodash";
+  import { chunk, flatten } from "lodash";
 
   import { getItemURL } from "../state/urls";
 
@@ -11,6 +11,7 @@
   import Pill from "./Pill.svelte";
 
   import { isExpired } from "../state/metrics";
+  import { pageState, updateURLState } from "../state/stores";
 
   let DEFAULT_ITEMS_PER_PAGE = 20;
 
@@ -20,6 +21,14 @@
 
   export let showFilter = true;
 
+  const features = new Set(
+    flatten(
+      items.map(
+        (item) =>
+          (item.features && item.features.map((f) => f.toLowerCase())) || []
+      )
+    )
+  );
   let filteredItems = items.filter((item) => !isExpired(item.expires));
   let pagedItems;
   let paginated = true;
@@ -27,37 +36,60 @@
   let currentPage = writable(1);
   setContext("currentPage", currentPage);
 
-  const searchText = getContext("searchText");
-  const goToPage = (page, perPage = DEFAULT_ITEMS_PER_PAGE) => {
+  // re-filter items when showExpired or search text changes
+  $: {
+    const search = $pageState.search || "";
+    // don't use $currentPage, because we don't want to call this reactively
+    // when paginating
+    currentPage.set(1);
+
+    const featureMatch = (item) =>
+      item.features &&
+      item.features.some((feature) =>
+        feature.toLowerCase().includes(search.toLowerCase())
+      );
+
+    // if the search string is an exact match for a particular feature,
+    // then filter just on that, otherwise filter on search text
+    filteredItems = features.has(search)
+      ? items.filter(
+          (item) =>
+            item.features &&
+            item.features.some(
+              (feature) => feature.toLowerCase() === search.toLowerCase()
+            )
+        )
+      : items.filter(
+          (item) => item.name.includes(search) || featureMatch(item)
+        );
+
+    // also filter out expired items (if we're not showing expired)
+    filteredItems = $pageState.showExpired
+      ? filteredItems
+      : filteredItems.filter((item) => !isExpired(item.expires));
+
+    // sort the filtered results so matches to features come before
+    // general matches
+    filteredItems = filteredItems.sort((item1, item2) => {
+      return (featureMatch(item2) ? 1 : 0) - (featureMatch(item1) ? 1 : 0);
+    });
+  }
+
+  // update pagination when either pagination changes or filtered list changes
+  // (above)
+  $: {
+    const perPage = paginated ? DEFAULT_ITEMS_PER_PAGE : filteredItems.length;
     pagedItems =
       filteredItems.length > 0
-        ? chunk([...filteredItems], perPage)[page - 1]
+        ? chunk([...filteredItems], perPage)[$currentPage - 1]
         : [];
+  }
+
+  const featureClicked = (feature) => {
+    $pageState = { ...$pageState, search: feature };
+    // when the user clicks on a feature, we want to persist a new state
+    updateURLState(true);
   };
-
-  const showExpired = getContext("showExpired");
-
-  $: {
-    if (paginated) {
-      goToPage($currentPage);
-    } else {
-      goToPage(1, filteredItems.length);
-    }
-  }
-
-  // re-filter items when showExpired or $searchText changes
-  $: {
-    const shownItems = $showExpired
-      ? items
-      : items.filter((item) => !isExpired(item.expires));
-    filteredItems = shownItems.filter((item) =>
-      item.name.includes($searchText)
-    );
-    // show the first page of result
-    currentPage.set(1);
-    // even if currentPage is already 1, we need to manually call goToPage() to get the first page
-    goToPage(1);
-  }
 </script>
 
 <style>
@@ -68,7 +100,7 @@
   }
 
   .item-property {
-    height: 40px;
+    height: 50px;
     overflow-y: auto;
     margin: -0.25rem;
   }
@@ -116,7 +148,7 @@
   {#if itemType === 'metrics'}
     <span class="expire-checkbox">
       <label>
-        <input type="checkbox" bind:checked={$showExpired} />
+        <input type="checkbox" bind:checked={$pageState.showExpired} />
         Show expired metrics
       </label>
       <label>
@@ -126,7 +158,9 @@
     </span>
   {/if}
   {#if showFilter}
-    <FilterInput placeHolder="Search {itemType}" />
+    <FilterInput
+      placeHolder="Search {itemType}"
+      bind:value={$pageState.search} />
   {/if}
   <div class="item-browser">
     <table class="mzp-u-data-table">
@@ -151,6 +185,15 @@
               <div class="item-property">
                 <a
                   href={getItemURL(appName, itemType, item.name)}>{item.name}</a>
+                {#if item.features}
+                  {#each item.features as feature}
+                    <Pill
+                      message={feature}
+                      bgColor="#4a5568"
+                      clickable
+                      on:click={featureClicked(feature)} />
+                  {/each}
+                {/if}
                 {#if isExpired(item.expires)}
                   <Pill message="Expired" bgColor="#4a5568" />
                 {/if}
