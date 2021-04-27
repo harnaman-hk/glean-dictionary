@@ -8,7 +8,7 @@ import glean
 import requests
 import stringcase
 
-OUTPUT_DIRECTORY = os.path.join("public", "data")
+OUTPUT_DIRECTORY = os.path.join("static", "data")
 ANNOTATIONS_URL = "https://mozilla.github.io/glean-annotations/api.json"
 
 
@@ -16,6 +16,18 @@ def _serialize_sets(obj):
     if isinstance(obj, set):
         return list(obj)
     return obj
+
+
+def _normalize_metrics(name):
+    # replace . with _ so sirv doesn't think that
+    # a metric is a file
+    metric_name = name.replace(".", "_")
+
+    # if a metric name starts with "metrics", uBlock Origin
+    # will block the network call to get the JSON resource
+    # See: https://github.com/mozilla/glean-dictionary/issues/550
+    # To get around this, we add "data" to metric names
+    return f"data_{metric_name}"
 
 
 # ETL specific snakecase taken from:
@@ -140,7 +152,7 @@ for (app_name, app_group) in app_groups.items():
                     metric.definition,
                     name=metric.identifier,
                     annotation=(
-                        annotations_index.get(app_name, {})
+                        annotations_index.get(metric.definition["origin"], {})
                         .get("metrics", {})
                         .get(metric.identifier)
                     ),
@@ -185,7 +197,7 @@ for (app_name, app_group) in app_groups.items():
                         ping.definition,
                         variants=[],
                         annotation=(
-                            annotations_index.get(app_name, {})
+                            annotations_index.get(ping.definition["origin"], {})
                             .get("pings", {})
                             .get(ping.identifier)
                         ),
@@ -249,7 +261,7 @@ for (app_name, app_group) in app_groups.items():
     # write metrics
     for metric_data in app_metrics.values():
         open(
-            os.path.join(app_metrics_dir, f"{metric_data['name'].replace('.', '_')}.json"), "w"
+            os.path.join(app_metrics_dir, f"{_normalize_metrics(metric_data['name'])}.json"), "w"
         ).write(
             json.dumps(
                 metric_data,
